@@ -4,149 +4,95 @@
 #include <cctype>
 #include <map>
 #include <fstream>
-
+#include <unordered_map>
 using namespace std;
 
-class Node {
-    string identifier, scope, type;
-    int lineNo;
-    Node* next;
-
-public:
-    Node() { next = NULL; }
-
-    Node(string key, string value, string type, int lineNo) {
-        this->identifier = key;
-        this->scope = value;
-        this->type = type;
-        this->lineNo = lineNo;
-        next = NULL;
-    }
-
-    void print() {
-        cout << "Identifier's Name: " << identifier
-             << "\nType: " << type
-             << "\nScope: " << scope
-             << "\nLine Number: " << lineNo << endl;
-    }
-
-    friend class SymbolTable;
-};
-const int MAX = 100;
 
 class SymbolTable {
-    Node* head[MAX];
-
 public:
-    SymbolTable() {
-        for (int i = 0; i < MAX; i++) head[i] = NULL;
+  
+    void declareVariable(const string &name, const string &type) {
+        if (symbolTable.find(name) != symbolTable.end()) {
+            throw runtime_error("Semantic error: Variable '" + name + "' is already declared.");
+        }
+        symbolTable[name] = type;
     }
 
-    int hashf(string id); 
-    bool insert(string id, string scope, string Type, int lineno);
-    string find(string id);
-    bool deleteRecord(string id);
-    bool modify(string id, string scope, string Type, int lineno);
+    string getVariableType(const string &name) {
+        if (symbolTable.find(name) == symbolTable.end()) {
+            throw runtime_error("Semantic error: Variable '" + name + "' is not declared.");
+        }
+        return symbolTable[name];
+    }
 
-    void printTable() {
-        for (int i = 0; i < MAX; i++) {
-            Node* start = head[i];
-            while (start != NULL) {
-                start->print();  
-                start = start->next;
+    vector<string> getAllVariables() const {
+        vector<string> variables;
+        for (const auto &entry : symbolTable) {
+            variables.push_back(entry.first);
+        }
+        return variables;
+    }
+
+private:
+    unordered_map<string, string> symbolTable;  
+};
+
+class IntermediateCodeGnerator {
+public:
+    vector<string> instructions;
+    int tempCount = 0;
+
+    string newTemp() {
+        return "t" + to_string(tempCount++);
+    }
+    vector<string> getInstructions() const {
+        return instructions; 
+    }
+
+
+    void addInstruction(const string &instr) {
+        instructions.push_back(instr);
+    }
+
+    void printInstructions() {
+        for (const auto &instr : instructions) {
+            cout << instr << endl;
+        }
+    }
+};
+
+class AssemblyCodeGenerator {
+public:
+    void generateAssembly(const vector<string>& intermediateCode) {
+        for (const auto& instr : intermediateCode) {
+            if (instr.substr(0, 6) == "DECLARE") {
+                string var = instr.substr(8);
+                cout << "PUSH R0        ; Reserve space for " << var << endl;
+            }
+            else if (instr.substr(0, 6) == "ASSIGN") {
+                size_t pos = instr.find("=");
+                string var = instr.substr(7, pos - 7);
+                string temp = instr.substr(pos + 2);
+                cout << "MOV " << var << ", " << temp << "   ; Assign " << temp << " to " << var << endl;
+            }
+            else if (instr == "Executing loop while loop.") {
+                cout << "Start of while loop condition check" << endl;
+            }
+            else if (instr == "IF condition is met, execute block.") {
+                cout << "Start of if block execution" << endl;
+            }
+            else if (instr == "Return expression value.") {
+                cout << " Return from function" << endl;
+            }
+            else {
+                cout << "; " << instr << " ; Unknown instruction" << endl;
             }
         }
     }
 };
 
 
-int SymbolTable::hashf(string id) {
-    int asciiSum = 0;
-    for (int i = 0; i < id.length(); i++) {
-        asciiSum = asciiSum + id[i];
-    }
-    return (asciiSum % 100); 
-}
 
-bool SymbolTable::insert(string id, string scope, string Type, int lineno) {
-    int index = hashf(id);
-    Node* p = new Node(id, scope, Type, lineno);
-
-    if (head[index] == NULL) {
-        head[index] = p;
-        return true;
-    } else {
-        Node* start = head[index];
-        while (start->next != NULL) start = start->next;
-        start->next = p;
-        return true;
-    }
-}
-
-
-string SymbolTable::find(string id) {
-    int index = hashf(id);
-    Node* start = head[index];
-
-    while (start != NULL) {
-        if (start->identifier == id) {
-            start->print();
-            return start->scope;
-        }
-        start = start->next;
-    }
-
-    return "-1"; 
-}
-
-
-bool SymbolTable::deleteRecord(string id) {
-    int index = hashf(id);
-    Node* tmp = head[index];
-    Node* par = head[index];
-
-    if (tmp == NULL) return false;
-
-    if (tmp->identifier == id && tmp->next == NULL) {
-        tmp->next = NULL;
-        delete tmp;
-        return true;
-    }
-
-    while (tmp->identifier != id && tmp->next != NULL) {
-        par = tmp;
-        tmp = tmp->next;
-    }
-
-    if (tmp->identifier == id && tmp->next != NULL) {
-        par->next = tmp->next;
-        tmp->next = NULL;
-        delete tmp;
-        return true;
-    }
-
-    par->next = NULL;
-    tmp->next = NULL;
-    delete tmp;
-    return true;
-}
-
-bool SymbolTable::modify(string id, string s, string t, int l) {
-    int index = hashf(id);
-    Node* start = head[index];
-
-    while (start != NULL) {
-        if (start->identifier == id) {
-            start->scope = s;
-            start->type = t;
-            start->lineNo = l;
-            return true;
-        }
-        start = start->next;
-    }
-
-    return false;
-}
 
 
 enum TokenType{
@@ -241,15 +187,20 @@ switch ((current))
     return tokens;
 }
 };
-class Parser{
-    private:
-    vector <Token>tokens;
+class Parser {
+private:
+    vector<Token> tokens;
     size_t pos;
-    public:
-    Parser(const vector<Token> &tokens){
-    this->tokens=tokens;
-    this->pos=0;
-}
+    IntermediateCodeGnerator &icg; 
+    SymbolTable &symbolTable; 
+public:
+    Parser(const vector<Token> &tokens,IntermediateCodeGnerator &icg, SymbolTable &symbolTable)
+        : tokens(tokens), pos(0), icg(icg), symbolTable(symbolTable){
+        this->tokens = tokens;
+        this->pos = 0;
+        this->icg = icg;  
+    }
+
 void parseProgram(){
 
 while(tokens[pos].type != T_EOF){
@@ -276,6 +227,7 @@ while(tokens[pos].type != T_EOF){
     else if(tokens[pos].type == T_LBRACE){
     parseBlock();
 }
+
 else{{
 cout << "SYNTAX ERROR: unexpected token at line " << tokens[pos].line << endl;
 exit(1); 
@@ -288,41 +240,70 @@ void parseBlock(){
     }
     expect(T_RBRACE);
 }
-void parseDeclaration(){
+
+void parseDeclaration() {
     expect(T_INT);
-    expect(T_ID);
+    string varName = tokens[pos].value; 
+    expect(T_ID);  
     expect(T_SEMICOLON);
-}
-void parseAssignment(){
-    expect(T_ID);
-    expect(T_ASSIGN);
-    parseExpression();
-    expect(T_SEMICOLON);
+
+    try {
+        symbolTable.declareVariable(varName, "int");  
+    } catch (runtime_error &e) {
+        cout << e.what() << " at line " << tokens[pos - 1].line << endl;
+        exit(1);
+    }
+
+    icg.addInstruction("DECLARE " + varName);
 }
 
-void parseifStatement(){
+void parseAssignment() {
+    string varName = tokens[pos].value;  
     expect(T_ID);
+
+    try {
+        symbolTable.getVariableType(varName);  
+    } catch (runtime_error &e) {
+        cout << e.what() << " at line " << tokens[pos - 1].line << endl;
+        exit(1);
+    }
+
+    expect(T_ASSIGN);  
+        parseExpression(); 
+    expect(T_SEMICOLON);
+
+    string temp = icg.newTemp();  
+    icg.addInstruction("ASSIGN " + varName + " = " + temp);
+}
+
+
+void parseifStatement(){
+    expect(T_IF); 
     expect(T_LPAREN);
     parseExpression();
     expect(T_RPAREN);
     parseStatement();
-    if(tokens[pos].type == T_ELSE){
-    expect(T_ELSE);
-    parseStatement();
+    if (tokens[pos].type == T_ELSE) {
+        expect(T_ELSE);  
+        parseStatement(); 
     }
+    icg.addInstruction("IF condition is encountered.");
 }
+
 // while statement
 void parseWhileStatement() {    
     expect(T_WHILE);           
     expect(T_LPAREN);            
     parseExpression();         
     expect(T_RPAREN);          
-    parseStatement();            
+    parseStatement();          
+    icg.addInstruction("While loop condition checked, executing loop.");  
 }
 void parseReturnStatement(){
     expect(T_RETURN);
     parseExpression();
     expect(T_SEMICOLON);
+    icg.addInstruction("Return expression value.");
 }
     void parseExpression(){
     parseTerm();
@@ -343,15 +324,17 @@ void parseTerm(){
 }
 }
 void parseFactor(){
-    if(tokens[pos].type==T_MUL || tokens[pos].type==T_ID){
-    pos++;
-    }else if(tokens[pos].type==T_LPAREN){
-    expect(T_LPAREN);
-    parseExpression();
-    expect(T_RPAREN);
-    }else{
-    cout<<"syntax error"<<tokens[pos].value<<endl;
-    exit(1);
+ if(tokens[pos].type == T_ID || tokens[pos].type == T_NUM) {
+        pos++;
+    }
+    else if(tokens[pos].type == T_LPAREN){      
+        expect(T_LPAREN);
+        parseExpression();
+        expect(T_RPAREN);
+    } 
+    else{
+        cout<<"syntax error:unexpected token "<<tokens[pos].value<<" at line "<<tokens[pos].line<<endl;
+        exit(1);
 }
 }
 
@@ -367,26 +350,34 @@ void expect(TokenType type){
 };
 
 
+
+
+
 int main(int argc, char* argv[])
 {
+    AssemblyCodeGenerator assemblyCodeGen;
     string line;
     ifstream file(argv[1]);
      if(!file.is_open()){
         cout<<"File not found"<<endl;
     }
     SymbolTable symbolTable;
-    while(getline(file,line)){ 
-        Lexer lexer(line);
-        vector<Token> tokens = lexer.tokenizer(symbolTable);
-        Parser parser(tokens);
-     
-        parser.parseProgram();  
+    IntermediateCodeGnerator icg;
+    string programContent((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+    Lexer lexer(programContent);
+    vector<Token> tokens = lexer.tokenizer(symbolTable);
+    Parser parser(tokens, icg, symbolTable);
+    parser.parseProgram();  
 
-    
-    
-    return 0;
+      cout << "\nINTERMEDIATE CODE: " << endl;
+    icg.printInstructions();  
+        cout << "\nASSEMBLY CODE: " << endl;
+    assemblyCodeGen.generateAssembly(icg.getInstructions()); 
+     cout << "\nSYMBOL TABLE: " << endl;
+    for (const auto &var : symbolTable.getAllVariables()) {
+        cout << var << ": " << symbolTable.getVariableType(var) << endl;
     }
-        cout << "SYMBOL TABLE " << endl;
-       symbolTable.printTable();
-    file.close();
+
+    file.close(); 
+    return 0;
 }
